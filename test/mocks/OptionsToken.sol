@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.13;
 
+import {console2} from "forge-std/Test.sol";
 import {Owned} from "solmate/auth/Owned.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 
-import {IOptionsToken} from "./interfaces/IOptionsToken.sol";
-import {IOracle} from "./interfaces/IOracle.sol";
-import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
-import {IExercise} from "./interfaces/IExercise.sol";
+import {IOptionsToken} from "../../src/interfaces/IOptionsToken.sol";
+import {IOracle} from "../../src/interfaces/IOracle.sol";
+import {IERC20Mintable} from "../../src/interfaces/IERC20Mintable.sol";
+import {IExercise} from "../../src/interfaces/IExercise.sol";
+
+struct OptionStruct {
+    uint256 paymentAmount;
+}
 
 /// @title Options Token
 /// @author zefram.eth
@@ -26,7 +31,12 @@ contract OptionsToken is IOptionsToken, ERC20, Owned, IERC20Mintable {
     /// Events
     /// -----------------------------------------------------------------------
 
-    event Exercise(address indexed sender, address indexed recipient, uint256 amount, bytes parameters);
+    event Exercise(
+        address indexed sender,
+        address indexed recipient,
+        uint256 amount,
+        bytes parameters
+    );
     event SetOracle(IOracle indexed newOracle);
     event SetTreasury(address indexed newTreasury);
 
@@ -41,7 +51,7 @@ contract OptionsToken is IOptionsToken, ERC20, Owned, IERC20Mintable {
     /// Storage variables
     /// -----------------------------------------------------------------------
 
-    mapping (address => bool) public isOption;
+    mapping(address => bool) public isOption;
 
     /// -----------------------------------------------------------------------
     /// Constructor
@@ -88,11 +98,12 @@ contract OptionsToken is IOptionsToken, ERC20, Owned, IERC20Mintable {
     /// @param amount The amount of options tokens to exercise
     /// @param recipient The recipient of the reward
     /// @param params Extra parameters to be used by the exercise function
-    function exercise(uint256 amount, address recipient, address option, bytes calldata params)
-        external
-        virtual
-        returns (bytes memory)
-    {
+    function exercise(
+        uint256 amount,
+        address recipient,
+        address option,
+        bytes calldata params
+    ) external virtual returns (bytes memory) {
         return _exercise(amount, recipient, option, params);
     }
 
@@ -104,11 +115,13 @@ contract OptionsToken is IOptionsToken, ERC20, Owned, IERC20Mintable {
     /// @param recipient The recipient of the reward
     /// @param params Extra parameters to be used by the exercise function
     /// @param deadline The deadline by which the transaction must be mined
-    function exercise(uint256 amount, address recipient, address option, bytes calldata params, uint256 deadline)
-        external
-        virtual
-        returns (bytes memory)
-    {
+    function exercise(
+        uint256 amount,
+        address recipient,
+        address option,
+        bytes calldata params,
+        uint256 deadline
+    ) external virtual returns (bytes memory) {
         if (block.timestamp > deadline) revert OptionsToken__PastDeadline();
         return _exercise(amount, recipient, option, params);
     }
@@ -124,28 +137,51 @@ contract OptionsToken is IOptionsToken, ERC20, Owned, IERC20Mintable {
         isOption[_address] = _isOption;
     }
 
+    function getPaymentAmount(
+        uint256 amount,
+        address option
+    ) external view returns (uint256 paymentAmount) {
+        paymentAmount = IExercise(option).getPaymentAmount(amount);
+        return paymentAmount;
+    }
+
+    function getUnderlyingToken(
+        address option
+    ) external view returns (address) {
+        return IExercise(option).getUnderlyingToken();
+    }
+
+    function getPaymentToken(address option) external view returns (address) {
+        return IExercise(option).getPaymentToken();
+    }
+
     /// -----------------------------------------------------------------------
     /// Internal functions
     /// -----------------------------------------------------------------------
 
-    function _exercise(uint256 amount, address recipient, address option, bytes calldata params)
-        internal
-        virtual
-        returns (bytes memory data)
-    {
+    function _exercise(
+        uint256 amount,
+        address recipient,
+        address option,
+        bytes calldata params
+    ) internal virtual returns (bytes memory data) {
         // skip if amount is zero
         if (amount == 0) return new bytes(0);
 
         // skip if option is not active
         if (!isOption[option]) revert OptionsToken__NotOption();
-
         // transfer options tokens from msg.sender to address(0)
         // we transfer instead of burn because TokenAdmin cares about totalSupply
         // which we don't want to change in order to follow the emission schedule
         transfer(address(0), amount);
 
         // give rewards to recipient
-        data = IExercise(option).exercise(msg.sender, amount, recipient, params);
+        data = IExercise(option).exercise(
+            msg.sender,
+            amount,
+            recipient,
+            params
+        );
 
         emit Exercise(msg.sender, recipient, amount, params);
     }
